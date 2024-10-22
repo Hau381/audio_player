@@ -174,48 +174,6 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     center.y = texture_height / 2.0f;
     SDL_RenderTextureRotated(renderer, texture, NULL, &dst_rect, rotation, &center, SDL_FLIP_NONE);
 
-    /* this next whole thing is _super_ expensive. Seriously, don't do this in real life. */
-
-    /* Download the pixels of what has just been rendered. This has to wait for the GPU to finish rendering it and everything before it,
-       and then make an expensive copy from the GPU to system RAM! */
-    surface = SDL_RenderReadPixels(renderer, NULL);
-
-    /* This is also expensive, but easier: convert the pixels to a format we want. */
-    if (surface && (surface->format != SDL_PIXELFORMAT_RGBA8888) && (surface->format != SDL_PIXELFORMAT_BGRA8888)) {
-        SDL_Surface *converted = SDL_ConvertSurface(surface, SDL_PIXELFORMAT_RGBA8888);
-        SDL_DestroySurface(surface);
-        surface = converted;
-    }
-
-    if (surface) {
-        /* Rebuild converted_texture if the dimensions have changed (window resized, etc). */
-        if ((surface->w != converted_texture_width) || (surface->h != converted_texture_height)) {
-            SDL_DestroyTexture(converted_texture);
-            converted_texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, surface->w, surface->h);
-            if (!converted_texture) {
-                SDL_Log("Couldn't (re)create conversion texture: %s", SDL_GetError());
-                return SDL_APP_FAILURE;
-            }
-            converted_texture_width = surface->w;
-            converted_texture_height = surface->h;
-        }
-
-        /* Turn each pixel into either black or white. This is a lousy technique but it works here.
-           In real life, something like Floyd-Steinberg dithering might work
-           better: https://en.wikipedia.org/wiki/Floyd%E2%80%93Steinberg_dithering*/
-//        cut_to_circle(surface, surface->h/2);
-
-
-        /* upload the processed pixels back into a texture. */
-        SDL_UpdateTexture(converted_texture, NULL, surface->pixels, surface->pitch);
-        SDL_DestroySurface(surface);
-
-        /* draw the texture to the top-left of the screen. */
-        dst_rect.x = dst_rect.y = 0.0f;
-        dst_rect.w = ((float) WINDOW_WIDTH) / 4.0f;
-        dst_rect.h = ((float) WINDOW_HEIGHT) / 4.0f;
-        SDL_RenderTexture(renderer, converted_texture, NULL, &dst_rect);
-    }
     /* see if we need to feed the audio stream more data yet.
        We're being lazy here, but if there's less than the entire wav file left to play,
        just shove a whole copy of it into the queue, so we always have _tons_ of
