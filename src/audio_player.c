@@ -25,6 +25,10 @@ static SDL_Texture *converted_texture = NULL;
 static int converted_texture_width = 0;
 static int converted_texture_height = 0;
 
+static SDL_AudioStream* stream = NULL;
+static Uint8* wav_data = NULL;
+static Uint32 wav_data_len = 0;
+
 #define WINDOW_WIDTH 640
 #define WINDOW_HEIGHT 480
 //
@@ -33,19 +37,38 @@ void cut_to_circle(SDL_Surface* input_img, int radius);
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
     SDL_Surface *surface = NULL;
+    SDL_AudioSpec spec;
     char *bmp_path = NULL;
+    char* wav_path = NULL;
 
     SDL_SetAppMetadata("Example Renderer Read Pixels", "1.0", "com.example.renderer-read-pixels");
 
-    if (!SDL_Init(SDL_INIT_VIDEO)) {
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
         SDL_Log("Couldn't initialize SDL: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
 
-    if (!SDL_CreateWindowAndRenderer("examples/renderer/read-pixels", WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer)) {
+    if (!SDL_CreateWindowAndRenderer("Audio Player", WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer)) {
         SDL_Log("Couldn't create window/renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
+
+    /* Load the .wav file from wherever the app is being run from. */
+    SDL_asprintf(&wav_path, "%sfile_example_WAV_1MG.wav", SDL_GetBasePath());  /* allocate a string of the full file path */
+    if (!SDL_LoadWAV(wav_path, &spec, &wav_data, &wav_data_len)) {
+        SDL_Log("Couldn't load .wav file: %s", SDL_GetError());
+        return SDL_APP_FAILURE;
+    }    
+    SDL_free(wav_path);  /* done with this string. */
+
+    /* Create our audio stream in the same format as the .wav file. It'll convert to what the audio hardware wants. */
+    stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
+    if (!stream) {
+        SDL_Log("Couldn't create audio stream: %s", SDL_GetError());
+        return SDL_APP_FAILURE;
+    }
+    /* SDL_OpenAudioDeviceStream starts the device paused. You have to tell it to start! */
+    SDL_ResumeAudioStreamDevice(stream);
 
     /* Textures are pixel data that we upload to the video hardware for fast drawing. Lots of 2D
        engines refer to these as "sprites." We'll do a static texture (upload once, draw many
@@ -99,8 +122,26 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 /* This function runs when a new event (mouse input, keypresses, etc) occurs. */
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
+    static bool IsPause = false;
     if (event->type == SDL_EVENT_QUIT) {
-        return SDL_APP_SUCCESS;  /* end the program, reporting success to the OS. */
+        return SDL_APP_SUCCESS; /* end the program, reporting success to the OS. */
+    }
+    if (event->type == SDL_EVENT_KEY_DOWN) {
+        switch (event->key.key) {
+        case SDLK_SPACE:
+            if (IsPause) {
+                SDL_ResumeAudioStreamDevice(stream);
+                IsPause = false;
+            }
+            else {
+                SDL_PauseAudioStreamDevice(stream);
+                IsPause = true;
+            }
+            break;
+        default:
+            SDL_Log("Some other key pressed: %c", event->key.key);
+            break;
+        }
     }
     return SDL_APP_CONTINUE;  /* carry on with the program! */
 }
@@ -172,6 +213,14 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         dst_rect.h = ((float) WINDOW_HEIGHT) / 4.0f;
         SDL_RenderTexture(renderer, converted_texture, NULL, &dst_rect);
     }
+    /* see if we need to feed the audio stream more data yet.
+       We're being lazy here, but if there's less than the entire wav file left to play,
+       just shove a whole copy of it into the queue, so we always have _tons_ of
+       data queued for playback. */
+    if (SDL_GetAudioStreamAvailable(stream) < (int)wav_data_len) {
+        /* feed more data to the stream. It will queue at the end, and trickle out as the hardware needs more data. */
+        SDL_PutAudioStreamData(stream, wav_data, wav_data_len);
+    }
 
     SDL_RenderPresent(renderer);  /* put it all on the screen! */
 
@@ -181,6 +230,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 /* This function runs once at shutdown. */
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
+    SDL_free(wav_data);  /* strictly speaking, this isn't necessary because the process is ending, but it's good policy. */
     SDL_DestroyTexture(converted_texture);
     SDL_DestroyTexture(texture);
     /* SDL will clean up the window/renderer for us. */
