@@ -32,8 +32,6 @@ static bool IsPause = false;
 float rotation = 0;
 #define WINDOW_WIDTH 640
 #define WINDOW_HEIGHT 480
-//
-void cut_to_circle(SDL_Surface* input_img, int radius);
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
@@ -85,7 +83,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     }
 
     SDL_free(bmp_path);  /* done with this, the file is loaded. */
-    //cut_to_circle(surface, 150);
     /* This is also expensive, but easier: convert the pixels to a format we want. */
     if (surface && (surface->format != SDL_PIXELFORMAT_RGBA8888) && (surface->format != SDL_PIXELFORMAT_BGRA8888)) {
         SDL_Surface *converted = SDL_ConvertSurface(surface, SDL_PIXELFORMAT_RGBA8888);
@@ -197,31 +194,3 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     /* SDL will clean up the window/renderer for us. */
 }
 
-//void cut_to_circle(int width, int height, int pitch, unsigned char *input_image, int radius)
-void cut_to_circle(SDL_Surface* input_img, int radius)
-{
-    int width = input_img->w;
-    int height = input_img->h;
-    int pitch = input_img->pitch;
-    Uint8 *input_image = (Uint8 *) input_img->pixels;
-
-    int cx = width / 2;  // X-coordinate of the center
-    int cy = height / 2; // Y-coordinate of the center
-
-    // Iterate over every pixel in the image
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            // Calculate the distance from the center
-            int dx = x - cx;
-            int dy = y - cy;
-            double distance = sqrt(dx * dx + dy * dy);
-
-            // If the pixel is outside the circle, set it to the background (0)
-            if (distance > radius) {
-                Uint8 *p = (Uint8 *)(&input_image[y * pitch + x]); // Assuming grayscale, set pixel to black
-                p[0] = p[3] = 0xFF;
-                p[1] = p[2] = 0; /* make pure black pixels red. */
-            }
-        }
-    }
-}
