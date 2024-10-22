@@ -28,7 +28,8 @@ static int converted_texture_height = 0;
 static SDL_AudioStream* stream = NULL;
 static Uint8* wav_data = NULL;
 static Uint32 wav_data_len = 0;
-
+static bool IsPause = false;
+float rotation = 0;
 #define WINDOW_WIDTH 640
 #define WINDOW_HEIGHT 480
 //
@@ -122,7 +123,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 /* This function runs when a new event (mouse input, keypresses, etc) occurs. */
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
-    static bool IsPause = false;
     if (event->type == SDL_EVENT_QUIT) {
         return SDL_APP_SUCCESS; /* end the program, reporting success to the OS. */
     }
@@ -155,7 +155,10 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     SDL_FRect dst_rect;
 
     /* we'll have a texture rotate around over 2 seconds (2000 milliseconds). 360 degrees in a circle! */
-    const float rotation = (((float) ((int) (now % 2000))) / 2000.0f) * 360.0f;
+    if (!IsPause)
+    {
+        rotation = (((float)((int)(now % 2000))) / 2000.0f) * 360.0f;
+    }
 
     /* as you can see from this, rendering draws over whatever was drawn before it. */
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);  /* black, full alpha */
