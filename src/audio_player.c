@@ -31,8 +31,23 @@ static Uint32 wav_data_len = 0;
 static bool IsPause = false;
 static char* wav_path = NULL;
 float rotation = 0;
-#define WINDOW_WIDTH 640
-#define WINDOW_HEIGHT 480
+static const SDL_Rect cbuttons_pause_rect = { 46, 0, 23, 18 };
+static const SDL_Rect cbuttons_pause_rect_pressed = { 46, 18, 23, 18 };
+#define WINDOW_WIDTH 275
+#define WINDOW_HEIGHT 116
+
+SDL_Texture *load_texture(const char *fname)
+{
+    SDL_Surface *surface = SDL_LoadBMP(fname);
+    if (!surface) {
+        return NULL;
+    }
+
+    SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_DestroySurface(surface);
+    return texture;  // MAY BE NULL.
+}
+
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
@@ -196,6 +211,14 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     dst_rect1.w = 100;
     dst_rect1.h = 50;
     SDL_RenderTexture(renderer, texture, NULL, &dst_rect1);
+    char *skin_path = NULL;
+    SDL_asprintf(&skin_path, "%sMAIN.bmp", SDL_GetBasePath());  
+    SDL_Texture *skin_main = load_texture(skin_path);
+    if (!skin_main) {
+        SDL_Log("Failed to load skin main.bmp", SDL_GetError());
+        return SDL_APP_FAILURE;
+    }
+    SDL_RenderTexture(renderer, skin_main, NULL, NULL);
     SDL_free(font_path);  /* done with this, the file is loaded. */
 
 
