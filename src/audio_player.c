@@ -33,6 +33,10 @@ static char* wav_path = NULL;
 float rotation = 0;
 static const SDL_Rect cbuttons_pause_rect = { 46, 0, 23, 18 };
 static const SDL_Rect cbuttons_pause_rect_pressed = { 46, 18, 23, 18 };
+static const SDL_Rect rewind_rect = {16, 82, 20, 20 };
+static const SDL_Rect stop_rect = {82, 82, 20, 20};
+static const SDL_Rect pause_rect = { 60, 82, 20, 20 };
+static const SDL_Rect resume_rect = {37, 82, 20, 20};
 #define WINDOW_WIDTH 275
 #define WINDOW_HEIGHT 116
 
@@ -154,6 +158,25 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             SDL_Log("Some other key pressed: %c", event->key.key);
             break;
         }
+    }
+    if(event->type == SDL_EVENT_MOUSE_BUTTON_DOWN)
+    {
+            const SDL_Point pt = { event->button.x, event->button.y };
+            if (SDL_PointInRect(&pt, &pause_rect)) {  // pressed the "pause" button
+                SDL_PauseAudioStreamDevice(stream);
+                IsPause = true;
+            } else if (SDL_PointInRect(&pt, &stop_rect)) {  // pressed the "stop" button
+                // TO DO: Implement stop functionality
+            }
+            else if (SDL_PointInRect(&pt, &resume_rect)) { // pressed the "resume" botton
+                SDL_ResumeAudioStreamDevice(stream);
+                IsPause = false;
+            }
+            else
+            {
+                // TO DO: Implement other button functionality
+            }
+
     }
     return SDL_APP_CONTINUE;  /* carry on with the program! */
 }
