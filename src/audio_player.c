@@ -14,7 +14,7 @@
 #define SDL_MAIN_USE_CALLBACKS 1  /* use the callbacks instead of main() */
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
-#include "SDL3_ttf/SDL_ttf.h"
+
 /* We will use this renderer to draw into this window every frame. */
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -29,7 +29,6 @@ static SDL_AudioStream* stream = NULL;
 static Uint8* wav_data = NULL;
 static Uint32 wav_data_len = 0;
 static bool IsPause = false;
-static char* wav_path = NULL;
 float rotation = 0;
 static const SDL_Rect cbuttons_pause_rect = { 46, 0, 23, 18 };
 static const SDL_Rect cbuttons_pause_rect_pressed = { 46, 18, 23, 18 };
@@ -58,6 +57,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     SDL_Surface *surface = NULL;
     SDL_AudioSpec spec;
     char *bmp_path = NULL;
+    char* wav_path = NULL;
 
     SDL_SetAppMetadata("Example Renderer Read Pixels", "1.0", "com.example.renderer-read-pixels");
 
@@ -77,6 +77,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
         SDL_Log("Couldn't load .wav file: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }    
+    SDL_free(wav_path);  /* done with this string. */
 
     /* Create our audio stream in the same format as the .wav file. It'll convert to what the audio hardware wants. */
     stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
@@ -131,8 +132,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     }
 
     SDL_DestroySurface(surface);  /* done with this, the texture has a copy of the pixels now. */
-    
-    SDL_Log("Audio path: %s", wav_path);
+
     return SDL_APP_CONTINUE;  /* carry on with the program! */
 }
 
@@ -187,8 +187,8 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     const Uint64 now = SDL_GetTicks();
     SDL_Surface *surface;
     SDL_FPoint center;
-    SDL_FRect dst_rect, dst_rect1;
-    TTF_Init();
+    SDL_FRect dst_rect;
+
     /* we'll have a texture rotate around over 2 seconds (2000 milliseconds). 360 degrees in a circle! */
     if (!IsPause)
     {
@@ -200,50 +200,14 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     SDL_RenderClear(renderer);  /* start with a blank canvas. */
 
     /* Center this one, and draw it with some rotation so it spins! */
-    dst_rect.x = ((float) (WINDOW_WIDTH - texture_width)) / 2.0f;
-    dst_rect.y = ((float) (WINDOW_HEIGHT - texture_height)) / 2.0f;
-    dst_rect.w = (float) texture_width;
-    dst_rect.h = (float) texture_height;
+    // dst_rect.x = ((float) (WINDOW_WIDTH - texture_width)) / 2.0f;
+    // dst_rect.y = ((float) (WINDOW_HEIGHT - texture_height)) / 2.0f;
+    // dst_rect.w = (float) texture_width;
+    // dst_rect.h = (float) texture_height;
     /* rotate it around the center of the texture; you can rotate it from a different point, too! */
-    center.x = texture_width / 2.0f;
-    center.y = texture_height / 2.0f;
-    SDL_RenderTextureRotated(renderer, texture, NULL, &dst_rect, rotation, &center, SDL_FLIP_NONE);
-    
-    // Load font
-    char* font_path = NULL;
-    SDL_asprintf(&font_path, "%sarial.ttf", SDL_GetBasePath());  /* allocate a string of the full file path */
-        // Load Font
-    TTF_Font* font = TTF_OpenFont(font_path, 16);
-    if (!font) {
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        return -1;
-    }
-    const char text[13] = "Hello SDL3 !";
-    SDL_Color fg = { 255, 255, 255, 255 };
-    SDL_Color bg = { 0, 0, 0, 255 };
-    SDL_Surface* textSurface = TTF_RenderText_LCD(font, text, strlen(text), fg, bg);
-
-    // Convert the combined surface to a texture
-    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, textSurface);
-    SDL_DestroySurface(textSurface); // Free the surface after conversion
-
-    // Render the combined text texture
-    dst_rect1.x = ((float)(WINDOW_WIDTH - 10)) / 2.0f;
-    dst_rect1.y = 0;
-    dst_rect1.w = 100;
-    dst_rect1.h = 50;
-    SDL_RenderTexture(renderer, texture, NULL, &dst_rect1);
-    char *skin_path = NULL;
-    SDL_asprintf(&skin_path, "%sMAIN.bmp", SDL_GetBasePath());  
-    SDL_Texture *skin_main = load_texture(skin_path);
-    if (!skin_main) {
-        SDL_Log("Failed to load skin main.bmp", SDL_GetError());
-        return SDL_APP_FAILURE;
-    }
-    SDL_RenderTexture(renderer, skin_main, NULL, NULL);
-    SDL_free(font_path);  /* done with this, the file is loaded. */
-
+    // center.x = texture_width / 2.0f;
+    // center.y = texture_height / 2.0f;
+    // SDL_RenderTextureRotated(renderer, texture, NULL, &dst_rect, rotation, &center, SDL_FLIP_NONE);
 
     /* see if we need to feed the audio stream more data yet.
        We're being lazy here, but if there's less than the entire wav file left to play,
@@ -253,9 +217,17 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         /* feed more data to the stream. It will queue at the end, and trickle out as the hardware needs more data. */
         SDL_PutAudioStreamData(stream, wav_data, wav_data_len);
     }
-
+    char *skin_path = NULL;
+    SDL_asprintf(&skin_path, "%sMAIN.bmp", SDL_GetBasePath());  
+    SDL_Texture *skin_main = load_texture(skin_path);
+    SDL_free(skin_path);  /* done with this string. */
+    if (!skin_main) {
+        SDL_Log("Failed to load skin main.bmp", SDL_GetError());
+        return SDL_APP_FAILURE;
+    }
+    SDL_RenderTexture(renderer, skin_main, NULL, NULL);
     SDL_RenderPresent(renderer);  /* put it all on the screen! */
-    TTF_Quit();
+    SDL_DestroyTexture(skin_main);
     return SDL_APP_CONTINUE;  /* carry on with the program! */
 }
 
@@ -263,7 +235,6 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
     SDL_free(wav_data);  /* strictly speaking, this isn't necessary because the process is ending, but it's good policy. */
-    SDL_free(wav_path);  /* done with this string. */
     SDL_DestroyTexture(converted_texture);
     SDL_DestroyTexture(texture);
     /* SDL will clean up the window/renderer for us. */
