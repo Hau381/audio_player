@@ -14,7 +14,15 @@
 #define SDL_MAIN_USE_CALLBACKS 1  /* use the callbacks instead of main() */
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <dirent.h>
+#endif
 /* We will use this renderer to draw into this window every frame. */
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -26,6 +34,7 @@ static int converted_texture_width = 0;
 static int converted_texture_height = 0;
 
 static SDL_AudioStream* stream = NULL;
+static SDL_AudioSpec spec;
 static Uint8* wav_data = NULL;
 static Uint32 wav_data_len = 0;
 static bool IsPause = false;
@@ -36,8 +45,79 @@ static const SDL_Rect rewind_rect = {16, 82, 20, 20 };
 static const SDL_Rect stop_rect = {82, 82, 20, 20};
 static const SDL_Rect pause_rect = { 60, 82, 20, 20 };
 static const SDL_Rect resume_rect = {37, 82, 20, 20};
+static const SDL_Rect next_rect = { 105, 82, 20, 20 };
+static const SDL_Rect pre_rect = { 16, 82, 20, 20 };
 #define WINDOW_WIDTH 275
 #define WINDOW_HEIGHT 116
+#define MAX_SONGS 100
+static char* files_path[MAX_SONGS];
+static UINT32 song_index = 0;
+// Helper: check if file ends with .wav (case-insensitive)
+int has_wav_extension(const char* filename) {
+    const char* ext = strrchr(filename, '.');
+#ifdef _WIN32
+    if (ext && (_stricmp(ext, ".wav") == 0 || _stricmp(ext, ".WAV") == 0)) {
+#else
+    if (ext && (strcasecmp(ext, ".wav") == 0 || strcasecmp(ext, ".WAV") == 0)) {
+#endif
+        return 1;
+    }
+    return 0;
+}
+
+// Main function: list .wav files
+int list_wav_files(const char* directory, char*** file_list, int* count) {
+    int capacity = 30;
+    *file_list = malloc(capacity * sizeof(char*));
+    if (*file_list == NULL) {
+        return -1;
+    }
+
+    *count = 0;
+
+#ifdef _WIN32
+    char search_path[MAX_PATH];
+    snprintf(search_path, sizeof(search_path), "%s\\*.wav", directory);
+
+    WIN32_FIND_DATA findFileData;
+    HANDLE hFind = FindFirstFile(search_path, &findFileData);
+
+    if (hFind == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+
+    do {
+        if (has_wav_extension(findFileData.cFileName)) {
+            if (*count >= capacity) {
+                capacity *= 2;
+                *file_list = realloc(*file_list, capacity * sizeof(char*));
+            }
+            (*file_list)[*count] = strdup(findFileData.cFileName);
+            (*count)++;
+        }
+    } while (FindNextFile(hFind, &findFileData));
+    FindClose(hFind);
+
+#else
+    DIR* dp = opendir(directory);
+    if (dp == NULL) return -1;
+
+    struct dirent* entry;
+    while ((entry = readdir(dp)) != NULL) {
+        if (has_wav_extension(entry->d_name)) {
+            if (*count >= capacity) {
+                capacity *= 2;
+                *file_list = realloc(*file_list, capacity * sizeof(char*));
+            }
+            (*file_list)[*count] = strdup(entry->d_name);
+            (*count)++;
+        }
+    }
+    closedir(dp);
+#endif
+
+    return 0;
+}
 
 SDL_Texture *load_texture(const char *fname)
 {
@@ -55,7 +135,7 @@ SDL_Texture *load_texture(const char *fname)
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
     SDL_Surface *surface = NULL;
-    SDL_AudioSpec spec;
+
     char *bmp_path = NULL;
     char* wav_path = NULL;
 
@@ -72,8 +152,25 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     }
 
     /* Load the .wav file from wherever the app is being run from. */
-    SDL_asprintf(&wav_path, "%sfile_example_WAV_1MG.wav", SDL_GetBasePath());  /* allocate a string of the full file path */
-    if (!SDL_LoadWAV(wav_path, &spec, &wav_data, &wav_data_len)) {
+    SDL_asprintf(&wav_path, "%smusic", SDL_GetBasePath());  /* allocate a string of the full file path */
+    char** files;
+    int count;
+
+
+    if (list_wav_files(wav_path, &files, &count) == 0) {
+        for (int i = 0; i < count; i++) {
+            
+            SDL_asprintf(&files_path[i], "%s/%s", wav_path, files[i]);
+            SDL_Log("Found: %s\n", files_path[i]);
+            free(files[i]);
+        }
+        free(files);
+    }
+    else {
+        SDL_Log("Error listing .wav files\n");
+    }
+
+    if (!SDL_LoadWAV(*files_path, &spec, &wav_data, &wav_data_len)) { // Load first file
         SDL_Log("Couldn't load .wav file: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }    
@@ -166,17 +263,58 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                 SDL_PauseAudioStreamDevice(stream);
                 IsPause = true;
             } else if (SDL_PointInRect(&pt, &stop_rect)) {  // pressed the "stop" button
-                // TO DO: Implement stop functionality
+                // Implement stop functionality
+                if (stream != NULL) { // Ensure the stream exists before destroying
+                    SDL_DestroyAudioStream(stream);
+                    stream = NULL; // Set stream to NULL to avoid dangling pointer
+                }
+                // You might also want to reset playback position, clear queues, etc.
+                IsPause = false; // If stopped, it's definitely not paused
             }
             else if (SDL_PointInRect(&pt, &resume_rect)) { // pressed the "resume" botton
                 SDL_ResumeAudioStreamDevice(stream);
                 IsPause = false;
             }
-            else
+            else if (SDL_PointInRect(&pt, &next_rect)) 
             {
-                // TO DO: Implement other button functionality
-            }
+                // Next song
+                SDL_AudioDeviceID devid = SDL_GetAudioStreamDevice(stream);
+                SDL_DestroyAudioStream(stream);
+                SDL_CloseAudioDevice(devid);
+                if (!SDL_LoadWAV(files_path[++song_index], &spec, &wav_data, &wav_data_len)) { // Load first file
+                    SDL_Log("Couldn't load .wav file: %s", SDL_GetError());
+                    return SDL_APP_FAILURE;
+                }
 
+                /* Create our audio stream in the same format as the .wav file. It'll convert to what the audio hardware wants. */
+                stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
+                if (!stream) {
+                    SDL_Log("Couldn't create audio stream: %s", SDL_GetError());
+                    return SDL_APP_FAILURE;
+                }
+                /* SDL_OpenAudioDeviceStream starts the device paused. You have to tell it to start! */
+                SDL_ResumeAudioStreamDevice(stream);
+            }
+            else if (SDL_PointInRect(&pt, &pre_rect))
+            {
+                // Previous Song
+                SDL_AudioDeviceID devid = SDL_GetAudioStreamDevice(stream);
+                SDL_DestroyAudioStream(stream);
+                SDL_CloseAudioDevice(devid);
+                if (!SDL_LoadWAV(files_path[--song_index], &spec, &wav_data, &wav_data_len)) { // Load first file
+                    SDL_Log("Couldn't load .wav file: %s", SDL_GetError());
+                    return SDL_APP_FAILURE;
+                }
+
+                /* Create our audio stream in the same format as the .wav file. It'll convert to what the audio hardware wants. */
+                stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
+                if (!stream) {
+                    SDL_Log("Couldn't create audio stream: %s", SDL_GetError());
+                    return SDL_APP_FAILURE;
+                }
+                /* SDL_OpenAudioDeviceStream starts the device paused. You have to tell it to start! */
+                SDL_ResumeAudioStreamDevice(stream);
+            }
     }
     return SDL_APP_CONTINUE;  /* carry on with the program! */
 }
