@@ -52,6 +52,7 @@ static const SDL_Rect pre_rect = { 16, 82, 20, 20 };
 #define MAX_SONGS 100
 static char* files_path[MAX_SONGS];
 static UINT32 song_index = 0;
+static UINT32 total_song = 0;
 // Helper: check if file ends with .wav (case-insensitive)
 int has_wav_extension(const char* filename) {
     const char* ext = strrchr(filename, '.');
@@ -154,11 +155,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     /* Load the .wav file from wherever the app is being run from. */
     SDL_asprintf(&wav_path, "%smusic", SDL_GetBasePath());  /* allocate a string of the full file path */
     char** files;
-    int count;
 
 
-    if (list_wav_files(wav_path, &files, &count) == 0) {
-        for (int i = 0; i < count; i++) {
+    if (list_wav_files(wav_path, &files, &total_song) == 0) {
+        for (int i = 0; i < total_song; i++) {
             
             SDL_asprintf(&files_path[i], "%s/%s", wav_path, files[i]);
             SDL_Log("Found: %s\n", files_path[i]);
@@ -278,10 +278,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             else if (SDL_PointInRect(&pt, &next_rect)) 
             {
                 // Next song
-                SDL_AudioDeviceID devid = SDL_GetAudioStreamDevice(stream);
+                IsPause = false;
                 SDL_DestroyAudioStream(stream);
-                SDL_CloseAudioDevice(devid);
-                if (!SDL_LoadWAV(files_path[++song_index], &spec, &wav_data, &wav_data_len)) { // Load first file
+              
+                if (!SDL_LoadWAV(files_path[++song_index % total_song], &spec, &wav_data, &wav_data_len)) { // Load first file
                     SDL_Log("Couldn't load .wav file: %s", SDL_GetError());
                     return SDL_APP_FAILURE;
                 }
@@ -298,10 +298,9 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             else if (SDL_PointInRect(&pt, &pre_rect))
             {
                 // Previous Song
-                SDL_AudioDeviceID devid = SDL_GetAudioStreamDevice(stream);
+                IsPause = false;
                 SDL_DestroyAudioStream(stream);
-                SDL_CloseAudioDevice(devid);
-                if (!SDL_LoadWAV(files_path[--song_index], &spec, &wav_data, &wav_data_len)) { // Load first file
+                if (!SDL_LoadWAV(files_path[--song_index % total_song], &spec, &wav_data, &wav_data_len)) { // Load first file
                     SDL_Log("Couldn't load .wav file: %s", SDL_GetError());
                     return SDL_APP_FAILURE;
                 }
